@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytorch_lightning as pl
 import torch
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import CSVLogger
 from torch.utils.data import DataLoader
 
@@ -34,6 +34,8 @@ def main() -> None:
     p.add_argument("--num-workers", type=int, default=2)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--debug", action="store_true", help="1 epoch, 10 train / 5 val batches")
+    p.add_argument("--progress-every", type=int, default=50,
+               help="progress bar refresh rate in steps (0 = no bar)")
     args = p.parse_args()
 
     pl.seed_everything(args.seed, workers=True)
@@ -54,7 +56,8 @@ def main() -> None:
         accelerator="auto",
         devices=1,
         precision="16-mixed" if torch.cuda.is_available() else "32-true",
-        callbacks=[ckpt, LearningRateMonitor(logging_interval="epoch")],
+        callbacks=[ckpt, LearningRateMonitor(logging_interval="epoch"),
+           TQDMProgressBar(refresh_rate=args.progress_every)],
         logger=CSVLogger(str(args.out_dir), name=f"unet_{args.loss}"),
         limit_train_batches=10 if args.debug else 1.0,
         limit_val_batches=5 if args.debug else 1.0,
