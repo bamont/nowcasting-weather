@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+data/
+outputs/
+wandb/
+lightning_logs/
+.ruff_cache/
+.pytest_cache/
