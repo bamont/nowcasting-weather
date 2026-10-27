@@ -7,3 +7,4 @@ wandb/
 lightning_logs/
 .ruff_cache/
 .pytest_cache/
+/checkpoints/

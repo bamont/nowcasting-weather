@@ -31,9 +31,13 @@ def build_model(args: argparse.Namespace, out_len: int) -> nn.Module:
     if args.model == "persistence":
         return Persistence(out_len)
     if args.model == "advection":
-        return OpticalFlowAdvection(out_len, lookback=args.lookback)
+        return OpticalFlowAdvection(out_len, lookback=args.lookback, winsize=args.winsize)
     if not args.checkpoint:
-        raise SystemExit("--checkpoint is required for --model unet")
+        raise SystemExit("--checkpoint is required for --model unet / diffusion")
+    if args.model == "diffusion":
+        from nowcasting.models.loading import load_diffusion
+
+        return load_diffusion(args.checkpoint, args.sample_steps)
     from nowcasting.lit import LitNowcaster
 
     return LitNowcaster.load_from_checkpoint(args.checkpoint, map_location="cpu").model
@@ -41,7 +45,7 @@ def build_model(args: argparse.Namespace, out_len: int) -> nn.Module:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--model", choices=["persistence", "advection", "unet"], default="persistence")
+    p.add_argument("--model", choices=["persistence", "advection", "unet", "diffusion"], default="persistence")
     p.add_argument("--checkpoint", type=Path, default=None, help="Lightning .ckpt (unet only)")
     p.add_argument("--root", type=Path, default=Path("data/sevir"), help="raw SEVIR (no cache)")
     p.add_argument("--cache-dir", type=Path, default=None, help="use the compact cache instead")
@@ -50,6 +54,8 @@ def main() -> None:
     p.add_argument("--batch-size", type=int, default=16)
     p.add_argument("--num-workers", type=int, default=0)
     p.add_argument("--lookback", type=int, default=3, help="advection only")
+    p.add_argument("--winsize", type=int, default=15, help="advection only")
+    p.add_argument("--sample-steps", type=int, default=None, help="DDIM steps (diffusion only)")
     p.add_argument("--max-batches", type=int, default=None)
     p.add_argument("--out", type=Path, default=None, help="JSON results path")
     args = p.parse_args()

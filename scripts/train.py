@@ -64,6 +64,9 @@ def main() -> None:
         log_every_n_steps=20,
     )
     trainer.fit(model, train_loader, val_loader)
+    final = Path(trainer.logger.log_dir) / "checkpoints" / "final.ckpt"
+    trainer.save_checkpoint(str(final))
+    print("final checkpoint:", final, "| global_step", trainer.global_step)
     print("best checkpoint:", ckpt.best_model_path)
 
 

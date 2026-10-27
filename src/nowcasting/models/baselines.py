@@ -28,10 +28,11 @@ class OpticalFlowAdvection(nn.Module):
     Intensities are conserved: no growth or decay of cells is modelled.
     """
 
-    def __init__(self, out_len: int = 12, lookback: int = 3) -> None:
+    def __init__(self, out_len: int = 12, lookback: int = 3, winsize: int = 15) -> None:
         super().__init__()
         self.out_len = out_len
         self.lookback = lookback
+        self.winsize = winsize  # Farneback averaging window: larger = smoother, more robust flow
 
     @staticmethod
     def _to_u8(frame: np.ndarray) -> np.ndarray:
@@ -53,7 +54,7 @@ class OpticalFlowAdvection(nn.Module):
             last = np.ascontiguousarray(frames[i, -1])
             prev = frames[i, -1 - self.lookback]
             flow = cv2.calcOpticalFlowFarneback(
-                self._to_u8(prev), self._to_u8(last), None, 0.5, 3, 15, 3, 5, 1.2, 0
+                self._to_u8(prev), self._to_u8(last), None, 0.5, 3, self.winsize, 3, 5, 1.2, 0
             )
             flow /= self.lookback  # displacement per 5-minute step, (H, W, 2) = (dx, dy)
             for k in range(1, self.out_len + 1):
