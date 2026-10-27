@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytorch_lightning as pl
 import torch
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import CSVLogger
 from torch.utils.data import DataLoader
 
@@ -55,6 +55,8 @@ def main() -> None:
     p.add_argument("--train-stride", type=int, default=12)
     p.add_argument("--num-workers", type=int, default=2)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--progress-every", type=int, default=100, help="progress bar refresh rate in steps")
+    p.add_argument("--resume", type=Path, default=None, help="Lightning checkpoint (e.g. last.ckpt) to resume from")
     p.add_argument("--debug", action="store_true", help="1 epoch, 10 train / 5 val batches")
     args = p.parse_args()
 
@@ -85,7 +87,7 @@ def main() -> None:
         max_epochs=1 if args.debug else args.epochs,
         accelerator="auto", devices=1,
         precision="16-mixed" if torch.cuda.is_available() else "32-true",
-        callbacks=[ckpt],
+        callbacks=[ckpt, TQDMProgressBar(refresh_rate=args.progress_every)],
         logger=CSVLogger(str(args.out_dir), name="diffusion"),
         gradient_clip_val=1.0,
         num_sanity_val_steps=0,
@@ -93,7 +95,7 @@ def main() -> None:
         limit_val_batches=5 if args.debug else 1.0,
         log_every_n_steps=20,
     )
-    trainer.fit(module, train_loader, val_loader)
+    trainer.fit(module, train_loader, val_loader, ckpt_path=str(args.resume) if args.resume else None)
 
     final = Path(trainer.logger.log_dir) / "checkpoints" / "final.ckpt"
     trainer.save_checkpoint(str(final))

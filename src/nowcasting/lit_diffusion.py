@@ -53,8 +53,10 @@ class LitResidualDiffusion(pl.LightningModule):
         self.register_buffer("alphas_cumprod", cosine_alphas_cumprod(timesteps), persistent=False)
         self.register_buffer("res_std", torch.tensor(float(res_std)))
         self.val_metrics = NowcastingMetrics(out_len)
+        self.bb_metrics = NowcastingMetrics(out_len)  # same samples, backbone forecast only
         self._spec_pred: SpectrumAccumulator | None = None
         self._spec_obs: SpectrumAccumulator | None = None
+        self._spec_bb: SpectrumAccumulator | None = None
         self.backbone.eval()
         self.ema_net.eval()
 
@@ -116,36 +118,44 @@ class LitResidualDiffusion(pl.LightningModule):
 
     def on_validation_epoch_start(self) -> None:
         self.val_metrics = NowcastingMetrics(self.hparams.out_len)
-        self._spec_pred = self._spec_obs = None
+        self.bb_metrics = NowcastingMetrics(self.hparams.out_len)
+        self._spec_pred = self._spec_obs = self._spec_bb = None
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
         self.log("val/loss", self.compute_loss(x, y))
         if batch_idx < self.hparams.eval_batches:  # sampling is slow: only a few batches
             pred = self.sample(x, n_members=1)[:, 0]
+            mu = self.backbone(x).float()
             self.val_metrics.update(pred, y)
-            size = y.shape[-1]
+            self.bb_metrics.update(mu, y)  # paired reference: the same samples without diffusion
             if self._spec_pred is None:
-                self._spec_pred = SpectrumAccumulator(self.hparams.out_len, size)
-                self._spec_obs = SpectrumAccumulator(self.hparams.out_len, size)
+                n, size = self.hparams.out_len, y.shape[-1]
+                self._spec_pred = SpectrumAccumulator(n, size)
+                self._spec_obs = SpectrumAccumulator(n, size)
+                self._spec_bb = SpectrumAccumulator(n, size)
             self._spec_pred.update(pred[:, :, 0].float().cpu().numpy())
             self._spec_obs.update(y[:, :, 0].float().cpu().numpy())
+            self._spec_bb.update(mu[:, :, 0].cpu().numpy())
 
     def on_validation_epoch_end(self) -> None:
-        res = self.val_metrics.compute()
-        csi = res["csi_pooled"]
-        self.log("val/csi_m", float(torch.nanmean(csi)), prog_bar=True)
+        res, res_bb = self.val_metrics.compute(), self.bb_metrics.compute()
+        self.log("val/csi_m", float(torch.nanmean(res["csi_pooled"])), prog_bar=True)
+        self.log("val/csi_m_backbone", float(torch.nanmean(res_bb["csi_pooled"])))
+        bias, bias_bb = self.val_metrics.frequency_bias(), self.bb_metrics.frequency_bias()
         for k, thr in enumerate(THRESHOLDS):
-            self.log(f"val/csi_{thr}", float(csi[k]))
-        counts = self.val_metrics.counts.sum(dim=0)  # (K, 3): hits, misses, false alarms
-        bias = (counts[:, 0] + counts[:, 2]) / (counts[:, 0] + counts[:, 1]).clamp(min=1)
-        for k, thr in enumerate(THRESHOLDS):
+            self.log(f"val/csi_{thr}", float(res["csi_pooled"][k]))
             self.log(f"val/bias_{thr}", float(bias[k]))
+            self.log(f"val/bias_bb_{thr}", float(bias_bb[k]))
         self.log("val/mse", float(res["mse"].mean()))
         if self._spec_pred is not None:
-            pred, obs = self._spec_pred.compute(), self._spec_obs.compute()
-            hf = float(pred[:, 16:].sum() / obs[:, 16:].sum())  # small scales, all lead times
-            self.log("val/hf_ratio", hf, prog_bar=True)
+            obs = self._spec_obs.compute()
+
+            def hf(acc: SpectrumAccumulator) -> float:  # small scales (k >= 16), all lead times
+                return float(acc.compute()[:, 16:].sum() / obs[:, 16:].sum())
+
+            self.log("val/hf_ratio", hf(self._spec_pred), prog_bar=True)
+            self.log("val/hf_ratio_backbone", hf(self._spec_bb))
 
     def configure_optimizers(self):
         opt = torch.optim.AdamW(self.net.parameters(), lr=self.hparams.lr, weight_decay=0.0)

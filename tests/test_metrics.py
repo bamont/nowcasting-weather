@@ -24,6 +24,8 @@ def test_hand_computed_counts():
     assert math.isclose(res["pod"][0, 0].item(), 2 / 4)
     assert math.isclose(res["far"][0, 0].item(), 1 / 3)
     assert torch.isnan(res["csi"][0, 1])  # no event at threshold 74 -> undefined
+    assert math.isclose(m.frequency_bias()[0].item(), 3 / 4)  # (2 hits + 1 false alarm) / (2 + 2)
+    assert torch.isnan(m.frequency_bias()[1])
 
 
 def test_perfect_prediction():

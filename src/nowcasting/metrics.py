@@ -63,6 +63,15 @@ class NowcastingMetrics:
             self.counts[:, k, 1] += (~pb & yb).sum(dim=(0, 2)).double()
             self.counts[:, k, 2] += (pb & ~yb).sum(dim=(0, 2)).double()
 
+    def frequency_bias(self) -> torch.Tensor:
+        """(K,) pooled over lead times: (hits + false alarms) / (hits + misses).
+
+        1 = the forecast covers as much area above the threshold as the observation.
+        """
+        c = self.counts.sum(dim=0)
+        den = c[:, 0] + c[:, 1]
+        return torch.where(den > 0, (c[:, 0] + c[:, 2]) / den.clamp(min=1), torch.full_like(den, float("nan")))
+
     def compute(self) -> dict[str, torch.Tensor]:
         """Per lead time: csi/pod/far with shape (T, K); mse/mae with shape (T,)."""
         per_horizon = scores_from_counts(self.counts)
