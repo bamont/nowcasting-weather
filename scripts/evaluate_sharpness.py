@@ -43,8 +43,11 @@ def compute(args: argparse.Namespace) -> dict:
     ds = CachedSEVIRDataset(args.cache_dir, args.split, image_size=args.image_size)
     loader = DataLoader(ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
     lookback, winsize = read_advection_config(args.advection_config)
-    models = load_models(args.unet or DEFAULT_UNETS, ds.out_len, lookback, winsize,
-                         args.diffusion, args.sample_steps)
+    unets = args.unet or ([] if args.no_baselines else DEFAULT_UNETS)
+    models = load_models(unets, ds.out_len, lookback, winsize, args.diffusion, args.sample_steps,
+                         include_baselines=not args.no_baselines)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    models = {name: m.to(device).eval() for name, m in models.items()}
 
     obs_spec = SpectrumAccumulator(ds.out_len, args.image_size)
     spec = {n: SpectrumAccumulator(ds.out_len, args.image_size) for n in models}
@@ -59,8 +62,9 @@ def compute(args: argparse.Namespace) -> dict:
             obs_spec.update(obs)
             n_seen += len(obs)
             obs_frac = next(iter(fss.values())).observed_fractions(obs)
+            x_dev = x.to(device)
             for name, model in models.items():
-                pred = model(x)[:, :, 0].contiguous().numpy()
+                pred = model(x_dev)[:, :, 0].contiguous().cpu().numpy()
                 spec[name].update(pred)
                 fss[name].update(pred, obs, obs_frac)
 
@@ -162,6 +166,7 @@ def main() -> None:
     p.add_argument("--unet", action="append", help="'Label=checkpoint.ckpt' (repeatable)")
     p.add_argument("--diffusion", action="append", help="'Label=checkpoint.ckpt' (repeatable)")
     p.add_argument("--sample-steps", type=int, default=None, help="DDIM steps for diffusion models")
+    p.add_argument("--no-baselines", action="store_true", help="skip persistence, advection and default U-Nets")
     p.add_argument("--advection-config", type=Path, default=Path("results/advection_tuned_val.json"))
     p.add_argument("--fss-thresholds", type=int, nargs="+", default=[74, 133, 181])
     p.add_argument("--out", type=Path, default=None, help="JSON path (default results/sharpness_<split>.json)")

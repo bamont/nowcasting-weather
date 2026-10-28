@@ -45,14 +45,15 @@ def load_models(
     winsize: int = 31,
     diffusion_specs: list[str] | None = None,
     sample_steps: int | None = None,
+    include_baselines: bool = True,
 ) -> dict[str, nn.Module]:
     """Specs are 'Label=path/to/checkpoint.ckpt'. Missing checkpoints are skipped with a warning."""
     from nowcasting.lit import LitNowcaster
 
-    models: dict[str, nn.Module] = {
-        "Persistence": Persistence(out_len),
-        "Advection": OpticalFlowAdvection(out_len, lookback=lookback, winsize=winsize),
-    }
+    models: dict[str, nn.Module] = {}
+    if include_baselines:
+        models["Persistence"] = Persistence(out_len)
+        models["Advection"] = OpticalFlowAdvection(out_len, lookback=lookback, winsize=winsize)
     for spec in unet_specs:
         label, _, path = spec.partition("=")
         if not path or not Path(path).exists():
