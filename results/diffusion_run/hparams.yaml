@@ -1,0 +1,11 @@
+in_len: 13
+out_len: 12
+backbone_base: 32
+base: 64
+cond_frames: 4
+timesteps: 1000
+sample_steps: 20
+lr: 0.0002
+ema_decay: 0.999
+eval_batches: 4
+res_std: 0.08

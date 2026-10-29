@@ -56,12 +56,16 @@ def main() -> None:
     p.add_argument("--lookback", type=int, default=3, help="advection only")
     p.add_argument("--winsize", type=int, default=15, help="advection only")
     p.add_argument("--sample-steps", type=int, default=None, help="DDIM steps (diffusion only)")
+    p.add_argument("--advection-input", action="store_true", help="U-Net trained with the advection forecast as input")
     p.add_argument("--max-batches", type=int, default=None)
     p.add_argument("--out", type=Path, default=None, help="JSON results path")
     args = p.parse_args()
 
+    if args.advection_input and (args.model != "unet" or not args.cache_dir):
+        raise SystemExit("--advection-input applies to --model unet and needs --cache-dir")
     if args.cache_dir:
-        ds = CachedSEVIRDataset(args.cache_dir, args.split, image_size=args.image_size)
+        ds = CachedSEVIRDataset(args.cache_dir, args.split, image_size=args.image_size,
+                                advection=args.advection_input)
     else:
         ds = SEVIRDataset(args.root, args.split, image_size=args.image_size)
     loader = DataLoader(ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)

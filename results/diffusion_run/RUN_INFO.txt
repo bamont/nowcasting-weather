@@ -1,0 +1,3 @@
+commit: 68e127455f1713207e2aabd351f20d9918ddda13
+seed: 42
+command: python scripts/train_diffusion.py --backbone-ckpt unet_mse_best.ckpt --epochs 40 --num-workers 2
