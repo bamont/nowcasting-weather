@@ -1,6 +1,6 @@
 # Precipitation nowcasting on SEVIR: U-Net baselines, sharpness diagnostics and residual diffusion
 
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/<USERNAME>/nowcasting-weather/blob/main/notebooks/demo.ipynb)
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/bamont/nowcasting-weather/blob/main/notebooks/demo.ipynb)
 
 Predict the next hour of radar-derived precipitation intensity (VIL) from the previous hour:
 13 input frames, 5 minutes apart, in; 12 forecast frames out (+5 to +60 min), at 128x128 pixels.
@@ -26,7 +26,7 @@ ideas that did not work.
 
 [`notebooks/demo.ipynb`](notebooks/demo.ipynb) loads the trained models, forecasts a few radar events and
 compares all five methods (forecast panels, animated GIF, power spectra, ensemble members and a probability map).
-It needs the weights and a small sample file, published as release assets: <LINK TO RELEASE>. A GPU is recommended
+It needs the weights and a small sample file, published as release assets: https://github.com/bamont/nowcasting-weather/releases/tag/v1.0. A GPU is recommended
 (the free Colab GPU is enough).
 
 ## Task and data
@@ -223,7 +223,7 @@ python scripts/train.py --cache-dir data/cache --image-size 192 --epochs 30
 uv run python scripts/make_demo_data.py --cache-dir data/cache --split test --out demo_samples.npz
 ```
 
-Pre-trained weights are not stored in the repository: <LINK TO RELEASE>.
+Pre-trained weights are not stored in the repository: https://github.com/bamont/nowcasting-weather/releases/tag/v1.0.
 
 ## Repository layout
 

@@ -40,6 +40,7 @@ def main() -> None:
 
     frames = np.stack([np.asarray(data[e]) for e in idx])
     kind = np.array(["intense"] * len(intense) + ["random"] * len(random))
+    args.out.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(args.out, frames=frames, kind=kind, event_index=idx)
     print(f"saved {args.out}: {frames.shape}, {args.out.stat().st_size / 1e6:.1f} MB")
 
