@@ -1,0 +1,7 @@
+commit: ba2b065e95aeda8d278b8c18c26efd67e5c22f46
+image size: 192
+seed: 42
+advection config: {"config": {"lookback": 4, "winsize": 45}}
+train: python scripts/train.py --cache-dir /tmp/sevir-cache --image-size 192 --epochs 30 --num-workers 2 --seed 42
+eval: scripts/evaluate_baselines.py --model unet ... --image-size 192 --split val
+sharpness: scripts/evaluate_sharpness.py ... --image-size 192 --split val --max-batches 30

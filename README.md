@@ -1,32 +1,43 @@
 # Precipitation nowcasting on SEVIR: U-Net baselines, sharpness diagnostics and residual diffusion
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/<USERNAME>/nowcasting-weather/blob/main/notebooks/demo.ipynb)
+
 Predict the next hour of radar-derived precipitation intensity (VIL) from the previous hour:
 13 input frames, 5 minutes apart, in; 12 forecast frames out (+5 to +60 min), at 128x128 pixels.
 
-This project is less about reaching a leaderboard number than about **measuring what a
-deep-learning nowcast actually gets wrong, and checking whether a generative model fixes it**.
+This project is less about reaching a leaderboard number than about **measuring what a deep-learning
+nowcast actually gets wrong, and checking whether a generative model fixes it**. It also records the
+ideas that did not work.
 
-**What I found**
+## Summary
 
-- A temporal U-Net clearly beats tuned optical-flow advection (CSI-M 0.42 vs 0.37 on the test
-  split) but produces blurry forecasts: it keeps only 2-5 % of the small-scale power of the
-  observations and covers 39 % (threshold 181) and 12 % (threshold 219) of the area of intense echoes (validation split).
-- A residual diffusion model on top of a frozen U-Net restores part of that detail and intensity,
-  at a measurable cost: a single sample has 0.025 lower CSI-M than the U-Net it refines.
-- As an 8-member ensemble it reduces CRPS by 27 % relative to the deterministic U-Net, and by
-  10 % relative to a control that simply adds Gaussian noise to the U-Net forecast. Most of the
-  CRPS gain over the U-Net comes from dispersion alone; the diffusion-specific gain is the smaller part.
-- The ensemble is under-dispersive (spread/skill 0.54) and its mean is as blurry as the U-Net.
+- A temporal U-Net clearly beats tuned optical-flow advection (CSI-M 0.42 vs 0.37 on the test split),
+  but its forecasts are blurry: on the validation split it keeps only 2-5 % of the small-scale power of the
+  observations and covers 39 % (threshold 181) and 12 % (threshold 219) of the area of intense echoes.
+- A residual diffusion model on top of a frozen U-Net restores part of that detail and intensity, at a
+  measurable cost: a single sample has 0.025 lower CSI-M than the U-Net it refines.
+- As an 8-member ensemble it reduces CRPS by 27 % relative to the deterministic U-Net, and by 10 % relative
+  to a control that simply adds Gaussian noise to the U-Net forecast: most of the CRPS gain over the U-Net comes
+  from dispersion alone. The ensemble is under-dispersive (spread/skill 0.54) and its mean is as blurry as the U-Net.
+- Four ideas gave no gain: a 4x larger network, 2.3x more training windows, the advection forecast as extra
+  input, and averaging three U-Nets (details below). A robustness check at 192x192 gives the same picture.
+
+## Try it
+
+[`notebooks/demo.ipynb`](notebooks/demo.ipynb) loads the trained models, forecasts a few radar events and
+compares all five methods (forecast panels, animated GIF, power spectra, ensemble members and a probability map).
+It needs the weights and a small sample file, published as release assets: <LINK TO RELEASE>. A GPU is recommended
+(the free Colab GPU is enough).
 
 ## Task and data
 
-- **Data**: [SEVIR](https://registry.opendata.aws/sevir/) VIL images (storm-event files only, 2017-2019),
-  uint8 values 0-255, 49 frames per event, 5 minutes apart.
-- **Resolution**: 384x384 frames are average-pooled to 128x128 and cached as uint8 (about 2.8 GB in total).
-  Scores are therefore **not directly comparable to published SEVIR benchmarks**.
-- **Splits (by time, no leakage between windows of one event)**: train until 2019-03-01
-  (2,541 events), validation 2019-03-01 to 2019-06-01 (368 events), test from 2019-06-01 (627 events).
-  Each event gives 3 windows of 25 frames (13 in, 12 out).
+- **Data**: [SEVIR](https://registry.opendata.aws/sevir/) VIL images (storm-event files only, 2017-2019), uint8 values
+  0-255, 49 frames per event, 5 minutes apart. Patches cover 384 km x 384 km with 1 km pixels.
+- **Resolution**: the 384x384 frames are average-pooled to 128x128 (about 3 km per pixel) and cached as uint8
+  (about 2.8 GB in total). Scores are therefore **not directly comparable to published SEVIR benchmarks**.
+- **Splits (by time; windows of one event never cross splits)**: train until 2019-03-01 (2,541 events),
+  validation 2019-03-01 to 2019-06-01 (368 events), test from 2019-06-01 (627 events). Each event gives 3 windows
+  of 25 frames (13 in, 12 out).
 
 ## Methods compared
 
@@ -38,8 +49,8 @@ deep-learning nowcast actually gets wrong, and checking whether a generative mod
 | U-Net (weighted MSE) | Same network, loss weight `1 + 5 * target` to emphasise intense pixels. |
 | Residual diffusion | Frozen U-Net (MSE) gives the mean forecast `mu`; a conditional diffusion model (8.4 M parameters, v-prediction, cosine schedule, EMA weights, 20-step DDIM sampling) learns the residual `y - mu`, conditioned on `mu` and the last 4 observed frames. |
 
-The residual diffusion model is a **simplified two-stage variant** of the idea in DiffCast
-(Yu et al., CVPR 2024), which trains the deterministic and diffusion parts jointly.
+The residual diffusion model is a **simplified two-stage variant** of the idea in DiffCast (Yu et al., CVPR 2024),
+which trains the deterministic and diffusion parts jointly.
 
 Training: U-Nets for 30 epochs, three seeds per loss; diffusion for 40 epochs (one seed), all on a Kaggle GPU.
 
@@ -47,16 +58,18 @@ Training: U-Nets for 30 epochs, three seeds per loss; diffusion for 40 epochs (o
 
 Fixed before looking at the test split, and tagged in git (`eval-freeze`).
 
-- **CSI / POD / FAR** at the standard SEVIR VIL thresholds 16, 74, 133, 160, 181, 219 (0-255 scale).
-  Hits, misses and false alarms are **accumulated over the whole split** and the score is computed once,
-  not averaged per sample. **CSI-M** is the mean CSI over the six thresholds.
+- **CSI / POD / FAR** at six VIL levels: 16, 74, 133, 160, 181 and 219 (0-255 scale). Hits, misses and false alarms
+  are **accumulated over the whole split** and the score is computed once, not averaged per sample. **CSI-M** is
+  the mean CSI over the six levels.
 - **Frequency bias**: forecast area above a threshold divided by observed area (1 is ideal).
 - **Radially averaged power spectrum**: ratio of forecast to observed power by spatial scale (1 = same detail).
 - **Fractions Skill Score (FSS)** for neighbourhoods of 1 to 33 pixels, thresholds 74, 133, 181.
-- **Ensemble scores**: fair CRPS, spread/skill ratio (1 = reliable) and Brier score, against the
-  deterministic U-Net (CRPS = MAE) and a Gaussian-noise control ensemble whose standard deviation is
-  fitted per lead time and intensity bin on training data.
+- **Ensemble scores**: fair CRPS, spread/skill ratio (1 = reliable) and Brier score, against the deterministic
+  U-Net (CRPS = MAE) and a Gaussian-noise control ensemble whose standard deviation is fitted per lead time and
+  intensity bin on training data.
 - **Model selection** used the validation split only. The test split was evaluated once, with frozen models.
+  Experiments run afterwards (advection input, seed averaging, 192 px) used validation only and did not change
+  the reported models.
 
 ## Results
 
@@ -70,11 +83,11 @@ Fixed before looking at the test split, and tagged in git (`eval-freeze`).
 | U-Net (weighted MSE) | 0.686 | 0.662 | **0.441** | **0.360** | **0.301** | **0.150** | **0.433** | 0.0066 |
 | Residual diffusion (1 sample) | 0.733 | 0.637 | 0.381 | 0.295 | 0.237 | 0.109 | 0.399 | 0.0068 |
 
-CSI-M on validation was 0.246, 0.376, 0.418, 0.429 and 0.394 for the same five models: the ranking is
-unchanged and no model moves by more than 0.015, which suggests the validation-based tuning and
-checkpoint selection did not inflate the test results. Across three seeds the last-epoch validation
-CSI-M was 0.409 (range 0.408-0.410) for the MSE U-Net and 0.423 (0.420-0.427) for the weighted one;
-differences below about 0.01 CSI-M between single runs should not be over-read.
+CSI-M on validation was 0.246, 0.376, 0.418, 0.429 and 0.394 for the same five models: the ranking is unchanged
+and no model moves by more than 0.015, which suggests the validation-based tuning and checkpoint selection did not
+inflate the test results. Across three seeds the last-epoch validation CSI-M was 0.409 (range 0.408-0.410) for the
+MSE U-Net and 0.423 (0.420-0.427) for the weighted one; differences below about 0.01 CSI-M between single runs
+should not be over-read.
 
 ![CSI by lead time](assets/test/csi_by_lead_time.png)
 
@@ -88,18 +101,18 @@ differences below about 0.01 CSI-M between single runs should not be over-read.
 | U-Net (weighted MSE) | 0.038 / 0.017 | 0.62 / 0.23 | 0.338 / 0.460 |
 | Residual diffusion (1 sample) | 0.381 / 0.372 | 0.48 / 0.30 | 0.363 / 0.507 |
 
-The U-Net wins on pixel-wise scores while being blurry and under-forecasting intense echoes; the FSS at
-181 does not recover with a larger tolerance (0.334 at 33 px), which points to missing intense area rather
-than only mislocated cells. The diffusion model improves all three columns but remains far from the ideal
-on intensity.
+The U-Net wins on pixel-wise scores while being blurry and under-forecasting intense echoes; the FSS at 181 does
+not recover with a larger tolerance (0.334 at 33 px), which points to missing intense area rather than only
+mislocated cells. The diffusion model improves all three columns but remains far from the ideal on intensity.
 
 ![Power spectrum ratio](assets/diffusion/sharpness_spectrum.png)
 ![FSS](assets/diffusion/sharpness_fss.png)
 
 ### Qualitative examples
 
-Random sample from the validation split (rows: observation, persistence, advection, U-Net MSE,
-weighted U-Net, residual diffusion). Animated versions are in `assets/final/`.
+Random sample from the validation split (rows: observation, persistence, advection, U-Net MSE, weighted U-Net,
+residual diffusion). The diffusion forecast has realistic texture but its cells do not coincide with the
+observed ones. Animated versions are in `assets/final/`.
 
 ![Forecast comparison](assets/final/forecast_val_random_735.png)
 
@@ -123,17 +136,52 @@ weighted U-Net, residual diffusion). Animated versions are in `assets/final/`.
   difference at threshold 181 (0.0071 vs 0.0073) is within rounding. A 0/1 forecast is a weak reference for
   Brier, so the diffusion-specific evidence is the CRPS gap to the control.
 
+### What did not help (validation split)
+
+- **Capacity and data.** A 4x larger U-Net (7.7 M parameters) and 2.3x more training windows changed the
+  mean CSI-M of the last five epochs by about +0.003 to +0.004 and +0.006 to +0.008 respectively (weighted loss,
+  one run each, compared with three seeds), close to the seed-to-seed variation.
+- **Advection forecast as extra input channels** (three seeds, MSE loss): CSI-M 0.404 against 0.409 for the
+  baseline, lower at every threshold (by 0.002 to 0.007) and with no gain on intense echoes (CSI@219 0.062 vs 0.066).
+  A plausible explanation, not tested: the blur comes from the loss under uncertainty, not from missing motion
+  information.
+- **Averaging three independently trained U-Nets** (measured on the three advection-input models, the checkpoints
+  available) lowered MSE by about 5 % (0.00569 vs 0.00597 for the average of the members) but left CSI-M essentially
+  unchanged (0.405 vs 0.404) and lowered the frequency bias at high thresholds: averaging smooths the forecast further.
+- **Weight averaging (EMA) was not run.** For the three MSE seeds the last-epoch CSI-M differed from the mean of
+  the last five epochs by +0.0003, +0.0011 and +0.0059, so the cosine learning-rate decay already does most of
+  the averaging.
+
+### Robustness check at 192x192 (validation split, U-Net MSE, one seed)
+
+Re-running the U-Net at 192x192 instead of 128x128 gives the same scores (CSI-M 0.406 against 0.4075 for the same
+seed; every threshold within 0.005; MSE 0.00593 against 0.0060), the same deficit of small-scale power (4.5-6.2 %
+of the observed power at k = 16-64, measured on the first 480 validation samples) and the same underestimation
+of intense areas (frequency bias 0.31 at threshold 181, 0.09 at 219). The blur and the intensity deficit are
+therefore not artefacts of the 3x pooling. FSS values are not comparable across resolutions because a neighbourhood
+of n pixels covers a different physical size.
+<TODO: add persistence and tuned-advection CSI-M at 192x192 once computed.>
+
 ## Limitations
 
-- **Resolution and dataset**: 128x128 pooled images, one dataset, US storm events only. No claim about other regions or sensors.
-- **Single seeds** for the diffusion model and for the test evaluations; three seeds only for the U-Net validation study.
-- **Checkpoints**: the two U-Nets use the best validation epoch, a noisy criterion (in mid-training the validation CSI-M moved by up to about 0.06
-  between consecutive epochs). Test scores agree with validation, but a last-epoch protocol would be cleaner. The diffusion model uses its last epoch.
+- **Resolution and dataset**: 128x128 pooled images, one dataset, US storm events only. No claim about other
+  regions or sensors. The 192x192 check covers the U-Net only.
+- **Single seeds** for the diffusion model, for the 192x192 check and for the test evaluations; three seeds only
+  for the U-Net validation study.
+- **Checkpoints**: the two U-Nets use the best validation epoch, a noisy criterion (in mid-training the validation
+  CSI-M moved by up to about 0.06 between consecutive epochs). Test scores agree with validation, but a last-epoch
+  protocol would be cleaner. The diffusion model uses its last epoch.
 - **Sharpness diagnostics (spectrum, FSS) were computed on the validation split only.**
 - **Diffusion model**: simplified two-stage variant; all members share the same backbone forecast, so large-scale
-  position errors are not represented in the spread (spread/skill 0.54); 20-step deterministic sampling; limited training budget.
-- **CRPS is computed pixel by pixel** and does not measure the spatial coherence of members, which is what the diffusion model is meant to add.
-- The Gaussian control is a simple baseline (independent noise); a spatially correlated control might narrow the gap.
+  position errors are not represented in the spread (spread/skill 0.54); 20-step deterministic sampling; limited
+  training budget (40 epochs).
+- **CRPS is computed pixel by pixel** and does not measure the spatial coherence of members, which is what the
+  diffusion model is meant to add. The Gaussian control uses independent noise; a spatially correlated control
+  might narrow the gap.
+- The negative results above come from validation-only experiments with a few seeds; they show no detectable
+  benefit, not proven harm.
+- Radar-only inputs: SEVIR also provides satellite and lightning data, not used here (their coverage is partial:
+  none for 2017 events, about 77-93 % of 2018-2019 events for the infrared channels).
 
 ## Reproduce
 
@@ -148,7 +196,7 @@ uv run pytest
 uv run python scripts/evaluate_baselines.py --model persistence --cache-dir data/cache --split val
 uv run python scripts/tune_advection.py --cache-dir data/cache
 
-# U-Net (GPU recommended)
+# U-Nets (GPU recommended)
 python scripts/train.py --cache-dir data/cache --epochs 30 --seed 42
 python scripts/train.py --cache-dir data/cache --epochs 30 --seed 42 --loss weighted_mse
 
@@ -161,22 +209,35 @@ python scripts/evaluate_sharpness.py --cache-dir data/cache --split val --diffus
 python scripts/evaluate_ensemble.py --checkpoint checkpoints/diffusion_final.ckpt --cache-dir data/cache --members 8 --gaussian-baseline
 uv run python scripts/plot_results.py
 uv run python scripts/make_gifs.py --cache-dir data/cache --split val --select random --n 3 --diffusion "Residual diffusion=checkpoints/diffusion_final.ckpt"
+
+# experiments that did not help
+uv run python scripts/build_advection_cache.py --cache-dir data/cache
+python scripts/train.py --cache-dir data/cache --epochs 30 --advection-input
+python scripts/evaluate_seed_ensemble.py --cache-dir data/cache --advection-input --checkpoints <ckpt1> <ckpt2> <ckpt3>
+
+# 192x192 check
+uv run python scripts/build_cache.py --root data/sevir --cache-dir data/cache --image-size 192
+python scripts/train.py --cache-dir data/cache --image-size 192 --epochs 30
+
+# sample file for the demo notebook
+uv run python scripts/make_demo_data.py --cache-dir data/cache --split test --out demo_samples.npz
 ```
 
-Pre-trained weights are not stored in the repository: <LINK TO RELEASE OR MODEL HUB>.
+Pre-trained weights are not stored in the repository: <LINK TO RELEASE>.
 
 ## Repository layout
 
 ```
 src/nowcasting/
-  data/          SEVIR dataset and uint8 cache
+  data/          SEVIR dataset, uint8 cache, advection cache
   models/        baselines, U-Net, diffusion network, model loading
   metrics.py     CSI / POD / FAR / bias (accumulated counts)
   sharpness.py   radial power spectrum and FSS
   ensemble.py    fair CRPS, spread/skill, Brier
   lit.py, lit_diffusion.py   training modules (PyTorch Lightning)
-scripts/         download, cache, train, evaluate, plot
-tests/           unit tests (metrics, dataset, cache, models, diffusion, sharpness, ensemble)
+scripts/         download, cache, train, evaluate, plot, demo data
+notebooks/       demo notebook
+tests/           unit tests
 results/         evaluation JSON files, training logs, result tables
 assets/          figures and animations used in this README
 ```

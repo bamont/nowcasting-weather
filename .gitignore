@@ -8,3 +8,7 @@ lightning_logs/
 .ruff_cache/
 .pytest_cache/
 /checkpoints/
+/demo_files/
+/notebooks/demo_files/
+/demo_out/
+/notebooks/demo_out/
